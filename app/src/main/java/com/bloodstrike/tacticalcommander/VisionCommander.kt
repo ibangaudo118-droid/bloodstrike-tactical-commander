@@ -42,7 +42,7 @@ object VisionCommander {
                 )
 
             val responseText =
-                response.data.decodeToString()
+                response.toString()
 
             Result.success(responseText)
 
