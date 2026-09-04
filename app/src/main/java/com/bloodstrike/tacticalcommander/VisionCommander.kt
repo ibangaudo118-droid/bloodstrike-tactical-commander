@@ -4,13 +4,12 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.functions.functions
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 
 object VisionCommander {
 
     suspend fun signIn(): Result<Unit> {
         return try {
+
             val auth = SupabaseClient.client.auth
 
             if (auth.currentSessionOrNull() == null) {
@@ -18,7 +17,9 @@ object VisionCommander {
             }
 
             Result.success(Unit)
+
         } catch (e: Exception) {
+
             Result.failure(e)
         }
     }
@@ -40,12 +41,13 @@ object VisionCommander {
                     }
                 )
 
-            val json = response.body
-                .toString()
+            val responseText =
+                response.data.decodeToString()
 
-            Result.success(json)
+            Result.success(responseText)
 
         } catch (e: Exception) {
+
             Result.failure(e)
         }
     }
