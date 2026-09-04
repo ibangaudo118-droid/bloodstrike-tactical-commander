@@ -33,18 +33,14 @@ class CaptureService : Service() {
     companion object {
         private const val CHANNEL_ID = "tactical_capture"
         private const val NOTIFICATION_ID = 1001
-
-        // Analyze approximately once per second.
         private const val ANALYSIS_INTERVAL_MS = 1000L
-
-        // Keep capture workload reasonable for low-end phones.
         private const val MAX_CAPTURE_WIDTH = 720
     }
 
     private var mediaProjection: MediaProjection? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay:
-            android.hardware.display.VirtualDisplay? = null
+        android.hardware.display.VirtualDisplay? = null
 
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
@@ -58,8 +54,6 @@ class CaptureService : Service() {
         AtomicBoolean(false)
 
     private var lastAnalysisTime = 0L
-
-    private var frameCount = 0L
 
     private val projectionCallback =
         object : MediaProjection.Callback() {
@@ -91,6 +85,29 @@ class CaptureService : Service() {
         startId: Int
     ): Int {
 
+        return try {
+
+            startCommanderSafely(intent)
+
+            START_NOT_STICKY
+
+        } catch (e: Exception) {
+
+            reportError(
+                "START ERROR: ${errorText(e)}"
+            )
+
+            stopCapture()
+            stopSelf()
+
+            START_NOT_STICKY
+        }
+    }
+
+    private fun startCommanderSafely(
+        intent: Intent?
+    ) {
+
         val resultCode =
             intent?.getIntExtra(
                 "resultCode",
@@ -116,9 +133,13 @@ class CaptureService : Service() {
             data == null
         ) {
 
+            reportError(
+                "START ERROR: Missing screen capture permission data"
+            )
+
             stopSelf()
 
-            return START_NOT_STICKY
+            return
         }
 
         val notification =
@@ -150,8 +171,6 @@ class CaptureService : Service() {
             resultCode,
             data
         )
-
-        return START_NOT_STICKY
     }
 
     private fun startCapture(
@@ -176,6 +195,10 @@ class CaptureService : Service() {
 
         val projection =
             mediaProjection ?: run {
+
+                reportError(
+                    "CAPTURE ERROR: MediaProjection unavailable"
+                )
 
                 stopSelf()
 
@@ -265,6 +288,18 @@ class CaptureService : Service() {
                 captureHandler
             )
 
+        if (virtualDisplay == null) {
+
+            reportError(
+                "CAPTURE ERROR: Virtual display could not be created"
+            )
+
+            stopCapture()
+            stopSelf()
+
+            return
+        }
+
         updateNotification(
             "LIVE • Tactical vision active"
         )
@@ -279,7 +314,11 @@ class CaptureService : Service() {
 
                 reader.acquireLatestImage()
 
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+
+                reportError(
+                    "FRAME ERROR: ${errorText(e)}"
+                )
 
                 null
             }
@@ -290,8 +329,6 @@ class CaptureService : Service() {
 
         try {
 
-            frameCount++
-
             val now =
                 System.currentTimeMillis()
 
@@ -299,6 +336,7 @@ class CaptureService : Service() {
                 now - lastAnalysisTime <
                 ANALYSIS_INTERVAL_MS
             ) {
+
                 return
             }
 
@@ -308,6 +346,7 @@ class CaptureService : Service() {
                     true
                 )
             ) {
+
                 return
             }
 
@@ -345,6 +384,10 @@ class CaptureService : Service() {
 
                 try {
 
+                    updateNotification(
+                        "LIVE • Signing in to AI..."
+                    )
+
                     val authResult =
                         VisionCommander.signIn()
 
@@ -352,8 +395,12 @@ class CaptureService : Service() {
                         authResult.isFailure
                     ) {
 
-                        updateNotification(
-                            "AI authentication failed"
+                        reportError(
+                            "AI AUTH ERROR: ${
+                                errorText(
+                                    authResult.exceptionOrNull()
+                                )
+                            }"
                         )
 
                         return@launch
@@ -368,7 +415,9 @@ class CaptureService : Service() {
                             encoded
                         )
 
-                    if (result.isSuccess) {
+                    if (
+                        result.isSuccess
+                    ) {
 
                         val response =
                             result.getOrNull()
@@ -391,19 +440,29 @@ class CaptureService : Service() {
                             updateNotification(
                                 "LIVE • $command"
                             )
+
+                        } else {
+
+                            updateNotification(
+                                "LIVE • AI returned no command"
+                            )
                         }
 
                     } else {
 
-                        updateNotification(
-                            "LIVE • AI request failed"
+                        reportError(
+                            "AI REQUEST ERROR: ${
+                                errorText(
+                                    result.exceptionOrNull()
+                                )
+                            }"
                         )
                     }
 
-                } catch (_: Exception) {
+                } catch (e: Exception) {
 
-                    updateNotification(
-                        "LIVE • Waiting for AI"
+                    reportError(
+                        "AI ERROR: ${errorText(e)}"
                     )
 
                 } finally {
@@ -411,6 +470,14 @@ class CaptureService : Service() {
                     analysisRunning.set(false)
                 }
             }
+
+        } catch (e: Exception) {
+
+            analysisRunning.set(false)
+
+            reportError(
+                "FRAME PROCESS ERROR: ${errorText(e)}"
+            )
 
         } finally {
 
@@ -482,7 +549,11 @@ class CaptureService : Service() {
                 cropped
             }
 
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+
+            reportError(
+                "BITMAP ERROR: ${errorText(e)}"
+            )
 
             null
         }
@@ -505,7 +576,11 @@ class CaptureService : Service() {
 
             output.toByteArray()
 
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+
+            reportError(
+                "JPEG ERROR: ${errorText(e)}"
+            )
 
             null
         }
@@ -521,7 +596,9 @@ class CaptureService : Service() {
         val markerIndex =
             response.indexOf(marker)
 
-        if (markerIndex == -1) {
+        if (
+            markerIndex == -1
+        ) {
 
             return response
                 .replace("{", "")
@@ -536,7 +613,10 @@ class CaptureService : Service() {
                 markerIndex
             )
 
-        if (colonIndex == -1) {
+        if (
+            colonIndex == -1
+        ) {
+
             return ""
         }
 
@@ -546,7 +626,10 @@ class CaptureService : Service() {
                 colonIndex + 1
             )
 
-        if (startQuote == -1) {
+        if (
+            startQuote == -1
+        ) {
+
             return ""
         }
 
@@ -556,7 +639,10 @@ class CaptureService : Service() {
                 startQuote + 1
             )
 
-        if (endQuote == -1) {
+        if (
+            endQuote == -1
+        ) {
+
             return ""
         }
 
@@ -564,6 +650,38 @@ class CaptureService : Service() {
             startQuote + 1,
             endQuote
         ).trim()
+    }
+
+    private fun errorText(
+        error: Throwable?
+    ): String {
+
+        if (error == null) {
+            return "Unknown error"
+        }
+
+        val message =
+            error.message?.trim()
+
+        return if (
+            !message.isNullOrEmpty()
+        ) {
+
+            "${error.javaClass.simpleName}: $message"
+
+        } else {
+
+            error.javaClass.simpleName
+        }
+    }
+
+    private fun reportError(
+        text: String
+    ) {
+
+        updateNotification(
+            text.take(180)
+        )
     }
 
     private fun buildNotification(
@@ -589,15 +707,20 @@ class CaptureService : Service() {
         text: String
     ) {
 
-        val manager =
-            getSystemService(
-                NotificationManager::class.java
+        try {
+
+            val manager =
+                getSystemService(
+                    NotificationManager::class.java
+                )
+
+            manager.notify(
+                NOTIFICATION_ID,
+                buildNotification(text)
             )
 
-        manager.notify(
-            NOTIFICATION_ID,
-            buildNotification(text)
-        )
+        } catch (_: Exception) {
+        }
     }
 
     private fun createNotificationChannel() {
@@ -666,6 +789,7 @@ class CaptureService : Service() {
     override fun onBind(
         intent: Intent?
     ): IBinder? {
+
         return null
     }
 }
