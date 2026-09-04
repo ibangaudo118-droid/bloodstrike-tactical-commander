@@ -8,7 +8,9 @@ import android.content.Intent
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.view.WindowManager
 
@@ -22,6 +24,8 @@ class CaptureService : Service() {
     private var mediaProjection: MediaProjection? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay: android.hardware.display.VirtualDisplay? = null
+
+    private var frameCount = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -89,16 +93,23 @@ class CaptureService : Service() {
 
         imageReader?.setOnImageAvailableListener(
             { reader ->
+
                 val image = reader.acquireLatestImage()
 
                 if (image != null) {
-                    // We successfully received a live screen frame.
-                    // AI analysis will be added after this capture step.
+
+                    frameCount++
+
+                    if (frameCount % 30 == 0) {
+                        updateNotification(
+                            "Live feed active • Frames: $frameCount"
+                        )
+                    }
 
                     image.close()
                 }
             },
-            null
+            Handler(Looper.getMainLooper())
         )
 
         virtualDisplay = mediaProjection?.createVirtualDisplay(
@@ -106,14 +117,31 @@ class CaptureService : Service() {
             width,
             height,
             density,
-            android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            android.hardware.display.DisplayManager
+                .VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             imageReader?.surface,
             null,
             null
         )
     }
 
+    private fun updateNotification(text: String) {
+
+        val notification = Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle("Tactical Commander")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setOngoing(true)
+            .build()
+
+        val manager =
+            getSystemService(NotificationManager::class.java)
+
+        manager.notify(NOTIFICATION_ID, notification)
+    }
+
     private fun createNotificationChannel() {
+
         val channel = NotificationChannel(
             CHANNEL_ID,
             "Screen Capture",
@@ -127,6 +155,7 @@ class CaptureService : Service() {
     }
 
     override fun onDestroy() {
+
         virtualDisplay?.release()
         virtualDisplay = null
 
