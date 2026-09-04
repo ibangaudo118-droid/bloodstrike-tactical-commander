@@ -130,10 +130,13 @@ class MainActivity : Activity() {
             ) as MediaProjectionManager
 
         statusText.text =
-            "Status: Waiting for screen permission..."
+            "Status: Requesting screen permission..."
+
+        val captureIntent =
+            manager.createScreenCaptureIntent()
 
         startActivityForResult(
-            manager.createScreenCaptureIntent(),
+            captureIntent,
             REQUEST_SCREEN_CAPTURE
         )
     }
@@ -153,7 +156,9 @@ class MainActivity : Activity() {
 
         val intent = Intent(
             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            Uri.parse("package:$packageName")
+            Uri.parse(
+                "package:$packageName"
+            )
         )
 
         startActivity(intent)
@@ -179,29 +184,45 @@ class MainActivity : Activity() {
         }
 
         if (
-            resultCode == RESULT_OK &&
-            data != null
+            resultCode != RESULT_OK ||
+            data == null
         ) {
 
             statusText.text =
-                "Status: Starting live tactical vision..."
+                "Status: Screen permission denied"
+
+            Toast.makeText(
+                this,
+                "Screen capture permission was not granted",
+                Toast.LENGTH_LONG
+            ).show()
+
+            return
+        }
+
+        statusText.text =
+            "Status: Screen permission granted"
+
+        try {
 
             val serviceIntent =
                 Intent(
                     this,
                     CaptureService::class.java
-                ).apply {
+                )
 
-                    putExtra(
-                        "resultCode",
-                        resultCode
-                    )
+            serviceIntent.putExtra(
+                "resultCode",
+                resultCode
+            )
 
-                    putExtra(
-                        "data",
-                        data
-                    )
-                }
+            serviceIntent.putExtra(
+                "data",
+                data
+            )
+
+            statusText.text =
+                "Status: Starting live commander..."
 
             if (
                 Build.VERSION.SDK_INT >=
@@ -222,10 +243,16 @@ class MainActivity : Activity() {
             statusText.text =
                 "Status: LIVE COMMANDER ACTIVE"
 
-        } else {
+        } catch (e: Exception) {
 
             statusText.text =
-                "Status: Screen capture permission denied"
+                "START ERROR: ${e.javaClass.simpleName}"
+
+            Toast.makeText(
+                this,
+                "Could not start commander: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 }
