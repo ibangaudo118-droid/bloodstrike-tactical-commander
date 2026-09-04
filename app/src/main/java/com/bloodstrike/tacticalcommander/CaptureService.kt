@@ -23,6 +23,7 @@ import android.content.pm.ServiceInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -33,22 +34,25 @@ class CaptureService : Service() {
         private const val CHANNEL_ID = "tactical_capture"
         private const val NOTIFICATION_ID = 1001
 
-        // AI analysis approximately once per second.
+        // Analyze approximately once per second.
         private const val ANALYSIS_INTERVAL_MS = 1000L
 
-        // Keep the workload reasonable for low-end phones.
+        // Keep capture workload reasonable for low-end phones.
         private const val MAX_CAPTURE_WIDTH = 720
     }
 
     private var mediaProjection: MediaProjection? = null
     private var imageReader: ImageReader? = null
-    private var virtualDisplay: android.hardware.display.VirtualDisplay? = null
+    private var virtualDisplay:
+            android.hardware.display.VirtualDisplay? = null
 
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
 
     private val serviceScope =
-        CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        CoroutineScope(
+            SupervisorJob() + Dispatchers.IO
+        )
 
     private val analysisRunning =
         AtomicBoolean(false)
@@ -71,9 +75,13 @@ class CaptureService : Service() {
         createNotificationChannel()
 
         captureThread =
-            HandlerThread("TacticalCaptureThread").also {
+            HandlerThread(
+                "TacticalCaptureThread"
+            ).also {
                 it.start()
-                captureHandler = Handler(it.looper)
+
+                captureHandler =
+                    Handler(it.looper)
             }
     }
 
@@ -84,35 +92,54 @@ class CaptureService : Service() {
     ): Int {
 
         val resultCode =
-            intent?.getIntExtra("resultCode", -1) ?: -1
+            intent?.getIntExtra(
+                "resultCode",
+                -1
+            ) ?: -1
 
         val data =
             if (Build.VERSION.SDK_INT >= 33) {
+
                 intent?.getParcelableExtra(
                     "data",
                     Intent::class.java
                 )
+
             } else {
+
                 @Suppress("DEPRECATION")
                 intent?.getParcelableExtra("data")
             }
 
-        if (resultCode == -1 || data == null) {
+        if (
+            resultCode == -1 ||
+            data == null
+        ) {
+
             stopSelf()
+
             return START_NOT_STICKY
         }
 
-        val notification = buildNotification(
-            "Starting tactical vision..."
-        )
+        val notification =
+            buildNotification(
+                "Starting tactical vision..."
+            )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.Q
+        ) {
+
             startForeground(
                 NOTIFICATION_ID,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                ServiceInfo
+                    .FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
             )
+
         } else {
+
             startForeground(
                 NOTIFICATION_ID,
                 notification
@@ -149,7 +176,9 @@ class CaptureService : Service() {
 
         val projection =
             mediaProjection ?: run {
+
                 stopSelf()
+
                 return
             }
 
@@ -163,30 +192,48 @@ class CaptureService : Service() {
                 WINDOW_SERVICE
             ) as WindowManager
 
-        val metrics = DisplayMetrics()
+        val metrics =
+            DisplayMetrics()
 
         @Suppress("DEPRECATION")
-        windowManager.defaultDisplay.getMetrics(metrics)
+        windowManager
+            .defaultDisplay
+            .getMetrics(metrics)
 
-        val originalWidth = metrics.widthPixels
-        val originalHeight = metrics.heightPixels
-        val density = metrics.densityDpi
+        val originalWidth =
+            metrics.widthPixels
+
+        val originalHeight =
+            metrics.heightPixels
+
+        val density =
+            metrics.densityDpi
 
         val scale =
-            if (originalWidth > MAX_CAPTURE_WIDTH) {
+            if (
+                originalWidth >
+                MAX_CAPTURE_WIDTH
+            ) {
+
                 MAX_CAPTURE_WIDTH.toFloat() /
                     originalWidth.toFloat()
+
             } else {
+
                 1f
             }
 
         val width =
-            (originalWidth * scale)
+            (
+                originalWidth * scale
+            )
                 .toInt()
                 .coerceAtLeast(1)
 
         val height =
-            (originalHeight * scale)
+            (
+                originalHeight * scale
+            )
                 .toInt()
                 .coerceAtLeast(1)
 
@@ -211,7 +258,8 @@ class CaptureService : Service() {
                 width,
                 height,
                 density,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                DisplayManager
+                    .VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader?.surface,
                 null,
                 captureHandler
@@ -228,8 +276,11 @@ class CaptureService : Service() {
 
         val image =
             try {
+
                 reader.acquireLatestImage()
+
             } catch (_: Exception) {
+
                 null
             }
 
@@ -244,7 +295,6 @@ class CaptureService : Service() {
             val now =
                 System.currentTimeMillis()
 
-            // Don't send every captured frame to the AI.
             if (
                 now - lastAnalysisTime <
                 ANALYSIS_INTERVAL_MS
@@ -252,8 +302,6 @@ class CaptureService : Service() {
                 return
             }
 
-            // Never allow multiple AI requests
-            // to run simultaneously.
             if (
                 !analysisRunning.compareAndSet(
                     false,
@@ -269,7 +317,9 @@ class CaptureService : Service() {
                 imageToBitmap(image)
 
             if (bitmap == null) {
+
                 analysisRunning.set(false)
+
                 return
             }
 
@@ -279,7 +329,9 @@ class CaptureService : Service() {
             bitmap.recycle()
 
             if (jpeg == null) {
+
                 analysisRunning.set(false)
+
                 return
             }
 
@@ -293,15 +345,17 @@ class CaptureService : Service() {
 
                 try {
 
-                    // Make sure an anonymous
-                    // authenticated session exists.
                     val authResult =
                         VisionCommander.signIn()
 
-                    if (authResult.isFailure) {
+                    if (
+                        authResult.isFailure
+                    ) {
+
                         updateNotification(
                             "AI authentication failed"
                         )
+
                         return@launch
                     }
 
@@ -346,7 +400,7 @@ class CaptureService : Service() {
                         )
                     }
 
-                } catch (e: Exception) {
+                } catch (_: Exception) {
 
                     updateNotification(
                         "LIVE • Waiting for AI"
@@ -359,6 +413,7 @@ class CaptureService : Service() {
             }
 
         } finally {
+
             image.close()
         }
     }
@@ -383,11 +438,13 @@ class CaptureService : Service() {
 
             val rowPadding =
                 rowStride -
-                    pixelStride * image.width
+                    pixelStride *
+                    image.width
 
             val paddedWidth =
                 image.width +
-                    rowPadding / pixelStride
+                    rowPadding /
+                    pixelStride
 
             val bitmap =
                 Bitmap.createBitmap(
@@ -406,7 +463,9 @@ class CaptureService : Service() {
                 paddedWidth ==
                 image.width
             ) {
+
                 bitmap
+
             } else {
 
                 val cropped =
@@ -424,6 +483,7 @@ class CaptureService : Service() {
             }
 
         } catch (_: Exception) {
+
             null
         }
     }
@@ -446,6 +506,7 @@ class CaptureService : Service() {
             output.toByteArray()
 
         } catch (_: Exception) {
+
             null
         }
     }
@@ -454,15 +515,6 @@ class CaptureService : Service() {
         response: String
     ): String {
 
-        /*
-         * The Edge Function returns:
-         *
-         * {"command":"MOVE TO COVER"}
-         *
-         * Keep this lightweight rather than
-         * adding another JSON dependency here.
-         */
-
         val marker =
             "\"command\""
 
@@ -470,6 +522,7 @@ class CaptureService : Service() {
             response.indexOf(marker)
 
         if (markerIndex == -1) {
+
             return response
                 .replace("{", "")
                 .replace("}", "")
@@ -600,9 +653,10 @@ class CaptureService : Service() {
 
         stopCapture()
 
-        serviceScope.coroutineContext.cancel()
+        serviceScope.cancel()
 
         captureThread?.quitSafely()
+
         captureThread = null
         captureHandler = null
 
