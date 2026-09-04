@@ -108,16 +108,34 @@ class CaptureService : Service() {
         intent: Intent?
     ) {
 
+        if (intent == null) {
+
+            reportError(
+                "START ERROR: Service Intent is NULL"
+            )
+
+            stopSelf()
+            return
+        }
+
+        /*
+         * Make sure Android knows how to recreate
+         * the Parcelable Intent passed from MainActivity.
+         */
+        intent.setExtrasClassLoader(
+            Intent::class.java.classLoader
+        )
+
         val resultCode =
-            intent?.getIntExtra(
+            intent.getIntExtra(
                 "resultCode",
-                -1
-            ) ?: -1
+                -999
+            )
 
         val data =
             if (Build.VERSION.SDK_INT >= 33) {
 
-                intent?.getParcelableExtra(
+                intent.getParcelableExtra(
                     "data",
                     Intent::class.java
                 )
@@ -125,26 +143,46 @@ class CaptureService : Service() {
             } else {
 
                 @Suppress("DEPRECATION")
-                intent?.getParcelableExtra("data")
+                intent.getParcelableExtra("data")
             }
 
-        if (
-            resultCode == -1 ||
-            data == null
-        ) {
+        /*
+         * Report the exact missing value instead
+         * of combining both possibilities.
+         */
+        if (resultCode == -999) {
 
             reportError(
-                "START ERROR: Missing screen capture permission data"
+                "START ERROR: resultCode was NOT received"
             )
 
             stopSelf()
+            return
+        }
 
+        if (resultCode != RESULT_OK) {
+
+            reportError(
+                "START ERROR: Invalid resultCode=$resultCode"
+            )
+
+            stopSelf()
+            return
+        }
+
+        if (data == null) {
+
+            reportError(
+                "START ERROR: screen capture Intent was NOT received"
+            )
+
+            stopSelf()
             return
         }
 
         val notification =
             buildNotification(
-                "Starting tactical vision..."
+                "Permission received • Starting capture..."
             )
 
         if (
@@ -178,131 +216,155 @@ class CaptureService : Service() {
         data: Intent
     ) {
 
-        if (mediaProjection != null) {
-            return
-        }
+        try {
 
-        val manager =
-            getSystemService(
-                MEDIA_PROJECTION_SERVICE
-            ) as MediaProjectionManager
+            if (mediaProjection != null) {
+                return
+            }
 
-        mediaProjection =
-            manager.getMediaProjection(
-                resultCode,
-                data
+            updateNotification(
+                "LIVE • Creating MediaProjection..."
             )
 
-        val projection =
-            mediaProjection ?: run {
+            val manager =
+                getSystemService(
+                    MEDIA_PROJECTION_SERVICE
+                ) as MediaProjectionManager
 
-                reportError(
-                    "CAPTURE ERROR: MediaProjection unavailable"
+            mediaProjection =
+                manager.getMediaProjection(
+                    resultCode,
+                    data
                 )
 
+            val projection =
+                mediaProjection ?: run {
+
+                    reportError(
+                        "CAPTURE ERROR: MediaProjection is NULL"
+                    )
+
+                    stopSelf()
+
+                    return
+                }
+
+            projection.registerCallback(
+                projectionCallback,
+                captureHandler
+            )
+
+            val windowManager =
+                getSystemService(
+                    WINDOW_SERVICE
+                ) as WindowManager
+
+            val metrics =
+                DisplayMetrics()
+
+            @Suppress("DEPRECATION")
+            windowManager
+                .defaultDisplay
+                .getMetrics(metrics)
+
+            val originalWidth =
+                metrics.widthPixels
+
+            val originalHeight =
+                metrics.heightPixels
+
+            val density =
+                metrics.densityDpi
+
+            val scale =
+                if (
+                    originalWidth >
+                    MAX_CAPTURE_WIDTH
+                ) {
+
+                    MAX_CAPTURE_WIDTH.toFloat() /
+                        originalWidth.toFloat()
+
+                } else {
+
+                    1f
+                }
+
+            val width =
+                (
+                    originalWidth * scale
+                )
+                    .toInt()
+                    .coerceAtLeast(1)
+
+            val height =
+                (
+                    originalHeight * scale
+                )
+                    .toInt()
+                    .coerceAtLeast(1)
+
+            updateNotification(
+                "LIVE • Creating screen reader..."
+            )
+
+            imageReader =
+                ImageReader.newInstance(
+                    width,
+                    height,
+                    PixelFormat.RGBA_8888,
+                    2
+                )
+
+            imageReader?.setOnImageAvailableListener(
+                { reader ->
+                    processLatestImage(reader)
+                },
+                captureHandler
+            )
+
+            updateNotification(
+                "LIVE • Creating virtual display..."
+            )
+
+            virtualDisplay =
+                projection.createVirtualDisplay(
+                    "TacticalCommanderCapture",
+                    width,
+                    height,
+                    density,
+                    DisplayManager
+                        .VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    imageReader?.surface,
+                    null,
+                    captureHandler
+                )
+
+            if (virtualDisplay == null) {
+
+                reportError(
+                    "CAPTURE ERROR: VirtualDisplay is NULL"
+                )
+
+                stopCapture()
                 stopSelf()
 
                 return
             }
 
-        projection.registerCallback(
-            projectionCallback,
-            captureHandler
-        )
-
-        val windowManager =
-            getSystemService(
-                WINDOW_SERVICE
-            ) as WindowManager
-
-        val metrics =
-            DisplayMetrics()
-
-        @Suppress("DEPRECATION")
-        windowManager
-            .defaultDisplay
-            .getMetrics(metrics)
-
-        val originalWidth =
-            metrics.widthPixels
-
-        val originalHeight =
-            metrics.heightPixels
-
-        val density =
-            metrics.densityDpi
-
-        val scale =
-            if (
-                originalWidth >
-                MAX_CAPTURE_WIDTH
-            ) {
-
-                MAX_CAPTURE_WIDTH.toFloat() /
-                    originalWidth.toFloat()
-
-            } else {
-
-                1f
-            }
-
-        val width =
-            (
-                originalWidth * scale
-            )
-                .toInt()
-                .coerceAtLeast(1)
-
-        val height =
-            (
-                originalHeight * scale
-            )
-                .toInt()
-                .coerceAtLeast(1)
-
-        imageReader =
-            ImageReader.newInstance(
-                width,
-                height,
-                PixelFormat.RGBA_8888,
-                2
+            updateNotification(
+                "LIVE • Tactical vision active"
             )
 
-        imageReader?.setOnImageAvailableListener(
-            { reader ->
-                processLatestImage(reader)
-            },
-            captureHandler
-        )
-
-        virtualDisplay =
-            projection.createVirtualDisplay(
-                "TacticalCommanderCapture",
-                width,
-                height,
-                density,
-                DisplayManager
-                    .VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader?.surface,
-                null,
-                captureHandler
-            )
-
-        if (virtualDisplay == null) {
+        } catch (e: Exception) {
 
             reportError(
-                "CAPTURE ERROR: Virtual display could not be created"
+                "CAPTURE ERROR: ${errorText(e)}"
             )
 
             stopCapture()
             stopSelf()
-
-            return
         }
-
-        updateNotification(
-            "LIVE • Tactical vision active"
-        )
     }
 
     private fun processLatestImage(
@@ -789,7 +851,6 @@ class CaptureService : Service() {
     override fun onBind(
         intent: Intent?
     ): IBinder? {
-
         return null
     }
 }
