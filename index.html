@@ -1,1 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blood Strike Tactical Commander</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LIVE TRAINING SYSTEM</p>
+        <h1>TACTICAL COMMANDER</h1>
+        <p class="subtitle">Blood Strike tactical vision prototype</p>
+      </div>
+      <div id="status" class="status offline">OFFLINE</div>
+    </header>
 
+    <section class="dashboard">
+      <section class="card gameplay-card">
+        <div class="card-header"><span>GAMEPLAY FEED</span><span id="feedState">NO FEED</span></div>
+        <div class="video-container">
+          <video id="gameFeed" autoplay muted playsinline></video>
+          <div id="videoPlaceholder" class="video-placeholder">
+            <div class="crosshair">+</div>
+            <p>GAMEPLAY FEED OFFLINE</p>
+            <small>Start live capture to begin.</small>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="startCapture">START LIVE FEED</button>
+          <button id="stopCapture" class="secondary" disabled>STOP FEED</button>
+        </div>
+        <p class="warning">Prototype: browser screen capture depends on Android/browser support. The future native Android version will use MediaProjection for direct gameplay capture.</p>
+      </section>
+
+      <aside class="card commander-card">
+        <div class="card-header"><span>COMMANDER</span><span class="live-dot"></span></div>
+        <div class="command-box">
+          <span class="command-label">CURRENT ORDER</span>
+          <h2 id="command">AWAITING INTEL</h2>
+          <p id="reason">Start the live feed. The AI vision layer will analyze gameplay in the next phase.</p>
+        </div>
+        <button id="nextCommand" class="command-button">SIMULATE TACTICAL CALL</button>
+      </aside>
+
+      <section class="card">
+        <div class="card-header"><span>SQUAD STATUS</span></div>
+        <div class="squad-grid">
+          <div class="operator"><strong>YOU</strong><span id="youState">READY</span></div>
+          <div class="operator"><strong>ALON</strong><span>UNKNOWN</span></div>
+          <div class="operator"><strong>TEAM 3</strong><span>UNKNOWN</span></div>
+          <div class="operator"><strong>TEAM 4</strong><span>UNKNOWN</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header"><span>MISSION OBJECTIVE</span></div>
+        <ol class="mission">
+          <li>Survive the opening rotation.</li>
+          <li>Gather information before committing.</li>
+          <li>Fight only with an advantage.</li>
+          <li>Relocate after major engagements.</li>
+          <li>Control the endgame position.</li>
+        </ol>
+      </section>
+
+      <section class="card log-card">
+        <div class="card-header"><span>COMMAND LOG</span></div>
+        <div id="log" class="log">
+          <div class="log-entry"><span>SYSTEM</span>Commander initialized.</div>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
