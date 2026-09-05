@@ -118,10 +118,6 @@ class CaptureService : Service() {
             return
         }
 
-        /*
-         * Make sure Android knows how to recreate
-         * the Parcelable Intent passed from MainActivity.
-         */
         intent.setExtrasClassLoader(
             Intent::class.java.classLoader
         )
@@ -146,10 +142,6 @@ class CaptureService : Service() {
                 intent.getParcelableExtra("data")
             }
 
-        /*
-         * Report the exact missing value instead
-         * of combining both possibilities.
-         */
         if (resultCode == -999) {
 
             reportError(
@@ -160,7 +152,10 @@ class CaptureService : Service() {
             return
         }
 
-        if (resultCode != RESULT_OK) {
+        if (
+            resultCode !=
+            android.app.Activity.RESULT_OK
+        ) {
 
             reportError(
                 "START ERROR: Invalid resultCode=$resultCode"
