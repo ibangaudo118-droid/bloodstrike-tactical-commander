@@ -33,12 +33,17 @@ class CaptureService : Service() {
     companion object {
         private const val CHANNEL_ID = "tactical_capture"
         private const val NOTIFICATION_ID = 1001
-        private const val ANALYSIS_INTERVAL_MS = 1000L
+
+        // AI analysis every 5 seconds.
+        // Screen capture itself remains continuous.
+        private const val ANALYSIS_INTERVAL_MS = 5000L
+
         private const val MAX_CAPTURE_WIDTH = 720
     }
 
     private var mediaProjection: MediaProjection? = null
     private var imageReader: ImageReader? = null
+
     private var virtualDisplay:
         android.hardware.display.VirtualDisplay? = null
 
@@ -50,6 +55,7 @@ class CaptureService : Service() {
             SupervisorJob() + Dispatchers.IO
         )
 
+    // Prevents multiple AI requests from running at once.
     private val analysisRunning =
         AtomicBoolean(false)
 
@@ -389,6 +395,8 @@ class CaptureService : Service() {
             val now =
                 System.currentTimeMillis()
 
+            // Do not send frames to AI more often
+            // than every 5 seconds.
             if (
                 now - lastAnalysisTime <
                 ANALYSIS_INTERVAL_MS
@@ -397,6 +405,7 @@ class CaptureService : Service() {
                 return
             }
 
+            // Never allow overlapping AI requests.
             if (
                 !analysisRunning.compareAndSet(
                     false,
@@ -524,6 +533,8 @@ class CaptureService : Service() {
 
                 } finally {
 
+                    // Always unlock analysis,
+                    // even when the request fails.
                     analysisRunning.set(false)
                 }
             }
